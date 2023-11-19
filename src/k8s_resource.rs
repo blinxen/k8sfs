@@ -88,14 +88,26 @@ impl ResourceFile {
     }
 
     pub fn get_desc(&self) -> Vec<u8> {
+        if self.filetype() != FileType::RegularFile {
+            log::error!("Fatal ERROR!! You should never reach this!!");
+            return Vec::new();
+        }
+
         let command: Vec<&str> = self.description_cmd.split(' ').collect();
         let command_args = &command[1..];
         let description = Command::new(command[0]).args(command_args).output();
 
         if let Ok(description) = description {
-            description.stdout
+            if description.status.success() {
+                description.stdout
+            } else {
+                log::error!("Could not get description for {}", self.name);
+                log::debug!("Command failed with: {}", String::from_utf8(description.stderr).unwrap_or(String::from("Could not parse stderr! Invalid UTF-8!")));
+                Vec::new()
+            }
         } else {
-            log::debug!("Could not get description for {}", self.name);
+            log::error!("Could not get description for {}", self.name);
+            log::debug!("Comand failed with: {:?}", description.err());
             Vec::new()
         }
     }
