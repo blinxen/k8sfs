@@ -101,6 +101,10 @@ impl ResourceFile {
     }
 
     pub fn size(&self) -> u64 {
-        self.get_desc().len() as u64
+        if self.filetype() == FileType::RegularFile {
+            self.get_desc().len() as u64
+        } else {
+            0
+        }
     }
 }
