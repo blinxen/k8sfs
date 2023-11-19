@@ -40,6 +40,10 @@ impl K8sFS {
         }
     }
 
+    pub fn name(&self) -> String {
+        String::from("KubernetesFS")
+    }
+
     fn initialize_inode_table(&mut self) {
         log::info!("Initializing inode table");
         // Init FS root
@@ -132,8 +136,15 @@ impl K8sFS {
         inode
     }
 
-    pub fn name(&self) -> String {
-        String::from("KubernetesFS")
+    fn add_child_to_inode(&mut self, parent: Inode, child: Inode) {
+        self.inode_table.get_mut(&parent).unwrap().1.push(child);
+    }
+
+    fn calculate_next_inode(&mut self) -> Inode {
+        let inode = self.next_inode;
+        self.next_inode += 1;
+
+        inode
     }
 
     fn get_file_by_name(&self, name: &OsStr, parent_inode: Inode) -> Option<&ResourceFile> {
@@ -180,13 +191,6 @@ impl K8sFS {
         }
 
         file
-    }
-
-    fn calculate_next_inode(&mut self) -> Inode {
-        let inode = self.next_inode;
-        self.next_inode += 1;
-
-        inode
     }
 }
 
