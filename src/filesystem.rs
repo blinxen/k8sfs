@@ -57,7 +57,8 @@ impl K8sFS {
         );
         // Init kubernetes context (which is the kubernetes root)
         let context_inode = self.calculate_next_inode();
-        let context = ResourceFile::new(
+        let context = kubectl::current_context();
+        let context_file = ResourceFile::new(
             context_inode,
             root.inode,
             kubectl::current_context(),
@@ -66,10 +67,10 @@ impl K8sFS {
         );
         // Add root node
         self.inode_table
-            .insert(root.inode, (root, vec![context.inode]));
+            .insert(root.inode, (root, vec![context_file.inode]));
         // Add context node
         self.inode_table
-            .insert(context.inode, (context, Vec::new()));
+            .insert(context_file.inode, (context_file, Vec::new()));
         // Init kubernetes namespaces
         for namespace in kubectl::namespaces() {
             let namespace_inode = self.build_resource_file(
@@ -78,7 +79,7 @@ impl K8sFS {
                 context_inode,
                 format!(
                     "kubectl --context {} describe namespaces {}",
-                    kubectl::current_context(),
+                    context,
                     namespace
                 ),
             );
@@ -91,7 +92,7 @@ impl K8sFS {
                     namespace_inode,
                     format!(
                         "kubectl --context {} --namespace {} describe pods {}",
-                        kubectl::current_context(),
+                        context,
                         namespace,
                         pod
                     ),
