@@ -79,8 +79,7 @@ impl K8sFS {
                 CONTEXT_INODE,
                 format!(
                     "kubectl --context {} describe namespaces {}",
-                    context,
-                    namespace
+                    context, namespace
                 ),
             );
             self.add_child_to_inode(CONTEXT_INODE, namespace_inode);
@@ -92,9 +91,7 @@ impl K8sFS {
                     namespace_inode,
                     format!(
                         "kubectl --context {} --namespace {} describe pods {}",
-                        context,
-                        namespace,
-                        pod
+                        context, namespace, pod
                     ),
                 );
                 self.add_child_to_inode(namespace_inode, pod_inode);
