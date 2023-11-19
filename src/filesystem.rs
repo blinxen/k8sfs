@@ -1,6 +1,6 @@
 use crate::k8s_resource::{ResourceFile, ResourceType};
 use crate::kubectl;
-use fuser::{self, Filesystem, ReplyAttr, ReplyDirectory, ReplyEntry, Request};
+use fuser::{Filesystem, ReplyAttr, ReplyDirectory, ReplyEntry, Request, ReplyEmpty, ReplyData};
 // https://www2.hs-fulda.de/~klingebiel/c-stdlib/sys.errno.h.htm
 use libc::{ENOBUFS, ENOENT, EPERM};
 use std::cmp::min;
@@ -268,7 +268,7 @@ impl Filesystem for K8sFS {
     // }
 
     // TODO: Allow deleting namespace
-    // fn rmdir(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: fuser::ReplyEmpty) {}
+    // fn rmdir(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: ReplyEmpty) {}
 
     // TODO: Allow renaming a kubernetes resource
     // fn rename(
@@ -279,7 +279,7 @@ impl Filesystem for K8sFS {
     //     newparent: u64,
     //     newname: &OsStr,
     //     flags: u32,
-    //     reply: fuser::ReplyEmpty,
+    //     reply: ReplyEmpty,
     // ) {
     // }
 
@@ -292,7 +292,7 @@ impl Filesystem for K8sFS {
         size: u32,
         _flags: i32,
         _lock_owner: Option<u64>,
-        reply: fuser::ReplyData,
+        reply: ReplyData,
     ) {
         log::debug!("Trying to read {}", inode);
 
@@ -321,7 +321,7 @@ impl Filesystem for K8sFS {
     //     write_flags: u32,
     //     flags: i32,
     //     lock_owner: Option<u64>,
-    //     reply: fuser::ReplyWrite,
+    //     reply: ReplyWrite,
     // ) {
     // }
 
@@ -379,7 +379,7 @@ impl Filesystem for K8sFS {
     //     mode: u32,
     //     umask: u32,
     //     flags: i32,
-    //     reply: fuser::ReplyCreate,
+    //     reply: ReplyCreate,
     // ) {
     // }
 }
