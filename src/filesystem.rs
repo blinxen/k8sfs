@@ -52,95 +52,84 @@ impl K8sFS {
             String::from(""),
         );
         // Init kubernetes context (which is the kubernetes root)
-        let k8s_context = ResourceFile::new(
-            self.calculate_next_inode(),
+        let context_inode = self.calculate_next_inode();
+        let context = ResourceFile::new(
+            context_inode,
             root.inode,
             kubectl::current_context(),
             ResourceType::Context,
             String::from(""),
         );
+        // Add root node
         self.inode_table
-            .insert(root.inode, (root, vec![k8s_context.inode]));
+            .insert(root.inode, (root, vec![context.inode]));
+        // Add context node
+        self.inode_table
+            .insert(context.inode, (context, Vec::new()));
         // Init kubernetes namespaces
-        let mut namespaces: Vec<Inode> = Vec::new();
         for namespace in kubectl::namespaces() {
-            let ns_inode = self.build_namespace_resource(namespace, &k8s_context);
-            namespaces.push(ns_inode);
+            let namespace_inode = self.build_resource_file(
+                &namespace,
+                ResourceType::Namespace,
+                context_inode,
+                format!(
+                    "kubectl --context {} describe namespaces {}",
+                    kubectl::current_context(),
+                    namespace
+                ),
+            );
+            self.add_child_to_inode(context_inode, namespace_inode);
+            // Init kubernetes pods
+            for pod in kubectl::pods(&namespace) {
+                let pod_inode = self.build_resource_file(
+                    &pod,
+                    ResourceType::Pod,
+                    namespace_inode,
+                    format!(
+                        "kubectl --context {} --namespace {} describe pods {}",
+                        kubectl::current_context(),
+                        namespace,
+                        pod
+                    ),
+                );
+                self.add_child_to_inode(namespace_inode, pod_inode);
+            }
         }
-        self.inode_table
-            .insert(k8s_context.inode, (k8s_context, namespaces));
     }
 
-    fn build_namespace_resource(&mut self, name: String, context: &ResourceFile) -> Inode {
-        let namespace_inode = self.calculate_next_inode();
-        let namespace = ResourceFile::new(
-            namespace_inode,
-            context.inode,
-            name.clone(),
-            ResourceType::Namespace,
-            String::new(),
-        );
-        let namespace_definiton = ResourceFile::new(
-            self.calculate_next_inode(),
-            context.inode,
-            name.clone() + "_definition.yaml",
-            ResourceType::ResourceDefinition,
-            format!(
-                "kubectl --context {} describe namespaces {}",
-                context.name, name
-            ),
-        );
-        // Init kubernetes pods
-        let mut pods = Vec::<Inode>::new();
-        pods.push(namespace_definiton.inode);
-        // Init kubernetes pods
-        for pod in kubectl::pods(&namespace.name) {
-            let pod_inode = self.build_pod_resource(pod, context, &namespace);
-            pods.push(pod_inode);
-        }
-        self.inode_table.insert(namespace_inode, (namespace, pods));
-        self.inode_table.insert(
-            namespace_definiton.inode,
-            (namespace_definiton, Vec::<Inode>::new()),
-        );
-
-        namespace_inode
-    }
-
-    fn build_pod_resource(
+    fn build_resource_file(
         &mut self,
-        name: String,
-        context: &ResourceFile,
-        namespace: &ResourceFile,
+        name: &str,
+        resource_type: ResourceType,
+        parent_inode: Inode,
+        description_cmd: String,
     ) -> Inode {
-        let pod_inode = self.calculate_next_inode();
-        let mut pod_children = Vec::<Inode>::new();
-        let pod = ResourceFile::new(
-            pod_inode,
-            namespace.inode,
-            name.clone(),
-            ResourceType::Pod,
+        let inode = self.calculate_next_inode();
+        let mut children = Vec::new();
+        let file = ResourceFile::new(
+            inode,
+            parent_inode,
+            name.to_string(),
+            resource_type,
             String::new(),
         );
-        // Add a pod definition file for each pod
-        let pod_definiton = ResourceFile::new(
-            self.calculate_next_inode(),
-            namespace.inode,
-            name.clone() + "_definition.yaml",
-            ResourceType::ResourceDefinition,
-            format!(
-                "kubectl --context {} --namespace {} describe pods {}",
-                context.name, namespace.name, name
-            ),
-        );
-        pod_children.push(pod_definiton.inode);
 
-        self.inode_table.insert(pod_inode, (pod, pod_children));
+        if resource_type != ResourceType::ResourceDefinition {
+            let definition_file = ResourceFile::new(
+                self.calculate_next_inode(),
+                parent_inode,
+                name.to_string() + "_definition.yaml",
+                ResourceType::ResourceDefinition,
+                description_cmd,
+            );
+            children.push(definition_file.inode);
+            self.inode_table
+                .insert(definition_file.inode, (definition_file, Vec::new()));
+        }
 
-        self.inode_table
-            .insert(pod_definiton.inode, (pod_definiton, Vec::<Inode>::new()));
+        self.inode_table.insert(inode, (file, children));
 
-        pod_inode
+        inode
     }
 
     pub fn name(&self) -> String {

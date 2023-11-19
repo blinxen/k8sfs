@@ -6,7 +6,7 @@ use std::{process::Command, time::SystemTime};
 const BLOCK_SIZE: u32 = 1024;
 
 //  Resource types that are currently supported
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum ResourceType {
     Root,
     Context,
@@ -18,7 +18,7 @@ pub enum ResourceType {
 // Represents a kubernetes resource
 pub struct ResourceFile {
     pub inode: Inode,
-    _parent: Inode,
+    pub parent: Inode,
     resource_type: ResourceType,
     pub name: String,
     description_cmd: String,
@@ -34,7 +34,7 @@ impl ResourceFile {
     ) -> Self {
         Self {
             inode,
-            _parent: parent,
+            parent,
             resource_type,
             name: resource_name,
             description_cmd,
