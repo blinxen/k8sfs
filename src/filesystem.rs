@@ -12,6 +12,8 @@ use std::time::Duration;
 const TTL: Duration = Duration::from_secs(1);
 pub type Inode = u64;
 pub type Offset = i64;
+const ROOT_INODE: Inode = 0;
+const CONTEXT_INODE: Inode = 1;
 // Tuple values explanations:
 //   * Resource: Contains the file type and k8s information that is associated with this Inode
 //   * Vec<Inode>: Contains inodes for all children. This depends on the ResourceType.
@@ -36,7 +38,7 @@ impl K8sFS {
     pub fn new() -> Self {
         K8sFS {
             inode_table: BTreeMap::new(),
-            next_inode: 0,
+            next_inode: 2,
         }
     }
 
@@ -47,20 +49,18 @@ impl K8sFS {
     fn initialize_inode_table(&mut self) {
         log::info!("Initializing inode table");
         // Init FS root
-        let root_inode = self.calculate_next_inode();
         let root = ResourceFile::new(
-            root_inode,
-            root_inode,
+            ROOT_INODE,
+            ROOT_INODE,
             String::from("root"),
             ResourceType::Root,
             String::from(""),
         );
         // Init kubernetes context (which is the kubernetes root)
-        let context_inode = self.calculate_next_inode();
         let context = kubectl::current_context();
         let context_file = ResourceFile::new(
-            context_inode,
-            root.inode,
+            CONTEXT_INODE,
+            ROOT_INODE,
             kubectl::current_context(),
             ResourceType::Context,
             String::from(""),
@@ -76,14 +76,14 @@ impl K8sFS {
             let namespace_inode = self.build_resource_file(
                 &namespace,
                 ResourceType::Namespace,
-                context_inode,
+                CONTEXT_INODE,
                 format!(
                     "kubectl --context {} describe namespaces {}",
                     context,
                     namespace
                 ),
             );
-            self.add_child_to_inode(context_inode, namespace_inode);
+            self.add_child_to_inode(CONTEXT_INODE, namespace_inode);
             // Init kubernetes pods
             for pod in kubectl::pods(&namespace) {
                 let pod_inode = self.build_resource_file(
