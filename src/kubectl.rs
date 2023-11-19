@@ -15,6 +15,20 @@ pub fn current_context() -> String {
     .to_owned()
 }
 
+pub fn create_namespace(name: &str) -> bool {
+    let status = Command::new("kubectl")
+        .arg("create")
+        .arg("namespace")
+        .arg(name)
+        .status();
+
+    if let Ok(status) = status {
+        status.success()
+    } else {
+        false
+    }
+}
+
 pub fn namespaces() -> Vec<String> {
     retrieve_k8s_resources(vec!["get", "namespace", "-ojson"])
 }

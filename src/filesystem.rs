@@ -2,7 +2,7 @@ use crate::k8s_resource::{ResourceFile, ResourceType};
 use crate::kubectl;
 use fuser::{self, Filesystem, ReplyAttr, ReplyDirectory, ReplyEntry, Request};
 // https://www2.hs-fulda.de/~klingebiel/c-stdlib/sys.errno.h.htm
-use libc::{ENOBUFS, ENOENT};
+use libc::{ENOBUFS, ENOENT, EPERM};
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
@@ -226,16 +226,48 @@ impl Filesystem for K8sFS {
         }
     }
 
-    // TODO: Allow creating namespaces
-    // fn mkdir(
-    //     &mut self,
-    //     _req: &Request<'_>,
-    //     parent: u64,
-    //     name: &OsStr,
-    //     mode: u32,
-    //     umask: u32,
-    //     reply: ReplyEntry,
-    // ) {
+    fn mkdir(
+        &mut self,
+        _req: &Request<'_>,
+        parent: u64,
+        name: &OsStr,
+        _mode: u32,
+        _umask: u32,
+        reply: ReplyEntry,
+    ) {
+        if parent == CONTEXT_INODE {
+            if !kubectl::create_namespace(&name.to_string_lossy()) {
+                // TODO: Find a better error code
+                reply.error(EPERM);
+                return;
+            }
+            let context_file = &self.inode_table.get(&CONTEXT_INODE).unwrap().0;
+            // Create namespace
+            let namespace_inode = self.build_resource_file(
+                &name.to_string_lossy(),
+                ResourceType::Namespace,
+                CONTEXT_INODE,
+                format!("kubectl --context {} describe namespaces {}", context_file.name, name.to_string_lossy()),
+            );
+            self.add_child_to_inode(CONTEXT_INODE, namespace_inode);
+            reply.entry(
+                &TTL,
+                &self
+                    .inode_table
+                    .get(&namespace_inode)
+                    .unwrap()
+                    .0
+                    .fileattrs(),
+                0,
+            );
+        } else {
+            log::error!("Directories are only allowed to be created under the root directory.");
+            reply.error(EPERM);
+        }
+    }
+
+    // TODO: Delete a pod
+    // fn unlink(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: fuser::ReplyEmpty) {
     // }
 
     // TODO: Allow deleting namespace
