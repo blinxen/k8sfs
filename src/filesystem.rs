@@ -1,6 +1,6 @@
 use crate::k8s_resource::{ResourceFile, ResourceType};
 use crate::kubectl;
-use fuser::{Filesystem, ReplyAttr, ReplyDirectory, ReplyEntry, Request, ReplyEmpty, ReplyData};
+use fuser::{Filesystem, ReplyAttr, ReplyData, ReplyDirectory, ReplyEmpty, ReplyEntry, Request};
 // https://www2.hs-fulda.de/~klingebiel/c-stdlib/sys.errno.h.htm
 use libc::{ENOBUFS, ENOENT, EPERM};
 use std::cmp::min;
@@ -49,21 +49,16 @@ impl K8sFS {
     fn initialize_inode_table(&mut self) {
         log::info!("Initializing inode table");
         // Init FS root
-        let root = ResourceFile::new(
-            ROOT_INODE,
-            ROOT_INODE,
-            String::from("root"),
-            ResourceType::Root,
-            String::from(""),
-        );
+        let root = ResourceFile::new(ROOT_INODE, ROOT_INODE, "root", ResourceType::Root, "", "");
         // Init kubernetes context (which is the kubernetes root)
         let context = kubectl::current_context();
         let context_file = ResourceFile::new(
             CONTEXT_INODE,
             ROOT_INODE,
-            kubectl::current_context(),
+            &context,
             ResourceType::Context,
-            String::from(""),
+            &context,
+            "",
         );
         // Add root node
         self.inode_table
@@ -72,27 +67,23 @@ impl K8sFS {
         self.inode_table
             .insert(context_file.inode, (context_file, Vec::new()));
         // Init kubernetes namespaces
-        for namespace in kubectl::namespaces() {
+        for namespace in kubectl::namespaces(&context) {
             let namespace_inode = self.build_resource_file(
                 &namespace,
                 ResourceType::Namespace,
                 CONTEXT_INODE,
-                format!(
-                    "kubectl --context {} describe namespaces {}",
-                    context, namespace
-                ),
+                &context,
+                &namespace,
             );
             self.add_child_to_inode(CONTEXT_INODE, namespace_inode);
             // Init kubernetes pods
-            for pod in kubectl::pods(&namespace) {
+            for pod in kubectl::pods(&context, &namespace) {
                 let pod_inode = self.build_resource_file(
                     &pod,
                     ResourceType::Pod,
                     namespace_inode,
-                    format!(
-                        "kubectl --context {} --namespace {} describe pods {}",
-                        context, namespace, pod
-                    ),
+                    &context,
+                    &namespace,
                 );
                 self.add_child_to_inode(namespace_inode, pod_inode);
             }
@@ -104,25 +95,21 @@ impl K8sFS {
         name: &str,
         resource_type: ResourceType,
         parent_inode: Inode,
-        description_cmd: String,
+        context: &str,
+        namespace: &str,
     ) -> Inode {
         let inode = self.calculate_next_inode();
         let mut children = Vec::new();
-        let file = ResourceFile::new(
-            inode,
-            parent_inode,
-            name.to_string(),
-            resource_type,
-            String::new(),
-        );
+        let file = ResourceFile::new(inode, parent_inode, name, resource_type, context, namespace);
 
         if resource_type != ResourceType::ResourceDefinition {
             let definition_file = ResourceFile::new(
                 self.calculate_next_inode(),
                 parent_inode,
-                name.to_string() + "_definition.yaml",
+                &format!("{}_definitio.yaml", name),
                 ResourceType::ResourceDefinition,
-                description_cmd,
+                context,
+                namespace,
             );
             children.push(definition_file.inode);
             self.inode_table
@@ -233,18 +220,25 @@ impl Filesystem for K8sFS {
         reply: ReplyEntry,
     ) {
         if parent == CONTEXT_INODE {
-            if !kubectl::create_namespace(&name.to_string_lossy()) {
+            let context = &self
+                .inode_table
+                .get(&CONTEXT_INODE)
+                .unwrap()
+                .0
+                .name
+                .to_string();
+            if !kubectl::create_namespace(&name.to_string_lossy(), context) {
                 // TODO: Find a better error code
                 reply.error(EPERM);
                 return;
             }
-            let context_file = &self.inode_table.get(&CONTEXT_INODE).unwrap().0;
             // Create namespace
             let namespace_inode = self.build_resource_file(
                 &name.to_string_lossy(),
                 ResourceType::Namespace,
                 CONTEXT_INODE,
-                format!("kubectl --context {} describe namespaces {}", context_file.name, name.to_string_lossy()),
+                context,
+                &name.to_string_lossy(),
             );
             self.add_child_to_inode(CONTEXT_INODE, namespace_inode);
             reply.entry(

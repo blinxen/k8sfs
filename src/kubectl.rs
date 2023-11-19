@@ -15,8 +15,10 @@ pub fn current_context() -> String {
     .to_owned()
 }
 
-pub fn create_namespace(name: &str) -> bool {
+pub fn create_namespace(name: &str, context: &str) -> bool {
     let status = Command::new("kubectl")
+        .arg("--context")
+        .arg(context)
         .arg("create")
         .arg("namespace")
         .arg(name)
@@ -29,19 +31,29 @@ pub fn create_namespace(name: &str) -> bool {
     }
 }
 
-pub fn namespaces() -> Vec<String> {
-    retrieve_k8s_resources(vec!["get", "namespace", "-ojson"])
+pub fn namespaces(context: &str) -> Vec<String> {
+    retrieve_k8s_resources(vec!["--context", context, "namespace", "-ojson"])
 }
 
-pub fn pods(namespace: &str) -> Vec<String> {
-    retrieve_k8s_resources(vec!["get", "pods", "--namespace", namespace, "-ojson"])
+pub fn pods(context: &str, namespace: &str) -> Vec<String> {
+    retrieve_k8s_resources(vec![
+        "--context",
+        context,
+        "--namespace",
+        namespace,
+        "pods",
+        "-ojson",
+    ])
 }
 
 fn retrieve_k8s_resources(kubectl_args: Vec<&str>) -> Vec<String> {
     log::debug!("Trying to retrieve k8s resources with {:?}", kubectl_args);
     // Vec to store the retrieved resource names
     let mut resources = Vec::new();
-    let cmd_output = Command::new("kubectl").args(kubectl_args).output();
+    let cmd_output = Command::new("kubectl")
+        .arg("get")
+        .args(kubectl_args)
+        .output();
 
     if let Ok(cmd_output) = cmd_output {
         let result: Value = serde_json::from_slice(&cmd_output.stdout).unwrap_or(Value::Null);

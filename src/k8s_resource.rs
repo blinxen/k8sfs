@@ -6,7 +6,7 @@ use std::{process::Command, time::SystemTime};
 const BLOCK_SIZE: u32 = 1024;
 
 //  Resource types that are currently supported
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ResourceType {
     Root,
     Context,
@@ -15,12 +15,36 @@ pub enum ResourceType {
     ResourceDefinition,
 }
 
+fn build_kubectl_command(
+    action: &str,
+    resource_type: ResourceType,
+    context: &str,
+    namespace: &str,
+    resource_name: &str,
+) -> String {
+    match resource_type {
+        ResourceType::Namespace => format!(
+            "kubectl --context {} {} namespaces {}",
+            context, action, resource_name
+        ),
+        ResourceType::Pod => format!(
+            "kubectl --context {} --namespace {} {} pods {}",
+            context, namespace, action, resource_name
+        ),
+        _ => format!(
+            "Files of type {:?} do not support {} !",
+            resource_type, action
+        ),
+    }
+}
+
 // Represents a kubernetes resource
 pub struct ResourceFile {
     pub inode: Inode,
     pub parent: Inode,
     resource_type: ResourceType,
     pub name: String,
+    delete_cmd: String,
     description_cmd: String,
 }
 
@@ -28,16 +52,30 @@ impl ResourceFile {
     pub fn new(
         inode: Inode,
         parent: Inode,
-        resource_name: String,
+        resource_name: &str,
         resource_type: ResourceType,
-        description_cmd: String,
+        context: &str,
+        namespace: &str,
     ) -> Self {
         Self {
             inode,
             parent,
             resource_type,
-            name: resource_name,
-            description_cmd,
+            name: resource_name.to_string(),
+            delete_cmd: build_kubectl_command(
+                "delete",
+                resource_type,
+                context,
+                namespace,
+                resource_name,
+            ),
+            description_cmd: build_kubectl_command(
+                "describe",
+                resource_type,
+                context,
+                namespace,
+                resource_name,
+            ),
         }
     }
 
@@ -102,7 +140,11 @@ impl ResourceFile {
                 description.stdout
             } else {
                 log::error!("Could not get description for {}", self.name);
-                log::debug!("Command failed with: {}", String::from_utf8(description.stderr).unwrap_or(String::from("Could not parse stderr! Invalid UTF-8!")));
+                log::debug!(
+                    "Command failed with: {}",
+                    String::from_utf8(description.stderr)
+                        .unwrap_or(String::from("Could not parse stderr! Invalid UTF-8!"))
+                );
                 Vec::new()
             }
         } else {
