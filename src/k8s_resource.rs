@@ -1,6 +1,6 @@
 use crate::filesystem::Inode;
 use fuser::{FileAttr, FileType};
-use std::{process::Command, time::SystemTime};
+use std::{process::Command, process::Output, time::SystemTime};
 
 // Block size is the amount of bytes that can be requests during read / write IO operation
 const BLOCK_SIZE: u32 = 1024;
@@ -131,9 +131,7 @@ impl ResourceFile {
             return Vec::new();
         }
 
-        let command: Vec<&str> = self.description_cmd.split(' ').collect();
-        let command_args = &command[1..];
-        let description = Command::new(command[0]).args(command_args).output();
+        let description = self.execute_command(&self.description_cmd);
 
         if let Ok(description) = description {
             if description.status.success() {
@@ -160,5 +158,29 @@ impl ResourceFile {
         } else {
             0
         }
+    }
+
+    pub fn delete(&self) -> bool {
+        let result = self.execute_command(&self.delete_cmd);
+        if let Ok(result) = result {
+            let success = result.status.success();
+            if !success {
+                log::debug!(
+                    "Command failed with: {}",
+                    String::from_utf8(result.stderr)
+                        .unwrap_or(String::from("Could not parse stderr! Invalid UTF-8!"))
+                );
+            }
+            success
+        } else {
+            log::debug!("Comand failed with: {:?}", result.err());
+            false
+        }
+    }
+
+    fn execute_command(&self, command: &str) -> std::io::Result<Output> {
+        let command_vec: Vec<&str> = command.split(' ').collect();
+        let command_args = &command_vec[1..];
+        Command::new(command_vec[0]).args(command_args).output()
     }
 }

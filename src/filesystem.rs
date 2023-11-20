@@ -106,7 +106,7 @@ impl K8sFS {
             let definition_file = ResourceFile::new(
                 self.calculate_next_inode(),
                 parent_inode,
-                &format!("{}_definitio.yaml", name),
+                &format!("{}_definition.yaml", name),
                 ResourceType::ResourceDefinition,
                 context,
                 namespace,
@@ -176,6 +176,26 @@ impl K8sFS {
         }
 
         file
+    }
+
+    // Delete file from inode table
+    // This method also makes sure that the inode is removed from the parent
+    fn clean_up_inode(&mut self, inode: Inode, parent: Inode) {
+        log::debug!("Deleting file with inode {}", inode);
+        self.inode_table.remove(&inode);
+        if let Some((_, parent_children)) = self.inode_table.get_mut(&parent) {
+            if let Some(index) = parent_children.iter().position(|&x| x == inode) {
+                parent_children.remove(index);
+            } else {
+                log::error!(
+                    "Could not delete file!Parent with inode {} does not have {} as a child!!!",
+                    parent,
+                    inode
+                );
+            }
+        } else {
+            log::error!("Parent with inode {} could not be found!!!", parent);
+        }
     }
 }
 
@@ -261,8 +281,33 @@ impl Filesystem for K8sFS {
     // fn unlink(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: fuser::ReplyEmpty) {
     // }
 
-    // TODO: Allow deleting namespace
-    // fn rmdir(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: ReplyEmpty) {}
+    fn rmdir(&mut self, _req: &Request<'_>, parent: u64, name: &OsStr, reply: ReplyEmpty) {
+        if parent == CONTEXT_INODE {
+            let mut inode_to_delete = 0;
+            let mut inode_to_delete_parent = 0;
+            if let Some(file) = self.get_file_by_name(name, parent) {
+                if !file.delete() {
+                    // TODO: Find a better error code
+                    reply.error(EPERM);
+                    return;
+                }
+
+                inode_to_delete = file.inode;
+                inode_to_delete_parent = file.parent;
+            } else {
+                log::debug!("File '{}' was already deleted", name.to_string_lossy());
+            }
+
+            if inode_to_delete > 0 && parent > 0 {
+                self.clean_up_inode(inode_to_delete, inode_to_delete_parent);
+            }
+
+            reply.ok();
+        } else {
+            log::error!("Directories are only allowed to be deleted under the root directory.");
+            reply.error(EPERM);
+        }
+    }
 
     // TODO: Allow renaming a kubernetes resource
     // fn rename(
