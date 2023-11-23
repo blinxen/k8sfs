@@ -101,20 +101,10 @@ impl K8sFS {
         let inode = self.calculate_next_inode();
         let mut children = Vec::new();
         let file = ResourceFile::new(inode, parent_inode, name, resource_type, context, namespace);
-
-        if resource_type != ResourceType::ResourceDefinition {
-            let definition_file = ResourceFile::new(
-                self.calculate_next_inode(),
-                parent_inode,
-                &format!("{}_definition.yaml", name),
-                ResourceType::ResourceDefinition,
-                context,
-                namespace,
-            );
-            children.push(definition_file.inode);
-            self.inode_table
-                .insert(definition_file.inode, (definition_file, Vec::new()));
-        }
+        let definition_file = file.create_definition_file(self.calculate_next_inode());
+        children.push(definition_file.inode);
+        self.inode_table
+            .insert(definition_file.inode, (definition_file, Vec::new()));
 
         self.inode_table.insert(inode, (file, children));
 

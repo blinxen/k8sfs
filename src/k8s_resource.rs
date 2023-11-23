@@ -2,8 +2,10 @@ use crate::filesystem::Inode;
 use fuser::{FileAttr, FileType};
 use std::{process::Command, process::Output, time::SystemTime};
 
-// Block size is the amount of bytes that can be requests during read / write IO operation
+// Block size is the amount of bytes that can be requested during read / write IO operations
 const BLOCK_SIZE: u32 = 1024;
+// Suffix that is added to a file name if the file should represent a definition file
+const DEFINITION_FILE_SUFFIX: &str = "_definition.yaml";
 
 //  Resource types that are currently supported
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -12,7 +14,6 @@ pub enum ResourceType {
     Context,
     Namespace,
     Pod,
-    ResourceDefinition,
 }
 
 fn build_kubectl_command(
@@ -32,7 +33,7 @@ fn build_kubectl_command(
             context, namespace, action, resource_name
         ),
         _ => format!(
-            "Files of type {:?} do not support {} !",
+            "Files of type {:?} do not support {}!",
             resource_type, action
         ),
     }
@@ -42,7 +43,7 @@ fn build_kubectl_command(
 pub struct ResourceFile {
     pub inode: Inode,
     pub parent: Inode,
-    resource_type: ResourceType,
+    _resource_type: ResourceType,
     pub name: String,
     delete_cmd: String,
     description_cmd: String,
@@ -60,7 +61,7 @@ impl ResourceFile {
         Self {
             inode,
             parent,
-            resource_type,
+            _resource_type: resource_type,
             name: resource_name.to_string(),
             delete_cmd: build_kubectl_command(
                 "delete",
@@ -79,14 +80,26 @@ impl ResourceFile {
         }
     }
 
+    pub fn create_definition_file(&self, inode: Inode) -> Self {
+        ResourceFile {
+            inode,
+            parent: self.parent,
+            _resource_type: self._resource_type,
+            name: format!("{}{}", self.name, DEFINITION_FILE_SUFFIX),
+            delete_cmd: self.delete_cmd.clone(),
+            description_cmd: self.description_cmd.clone(),
+        }
+    }
+
+    fn is_definition_file(&self) -> bool {
+        self.name.ends_with(DEFINITION_FILE_SUFFIX)
+    }
+
     pub fn filetype(&self) -> FileType {
-        match self.resource_type {
-            // Filesystem root
-            ResourceType::Root => FileType::Directory,
-            ResourceType::Context => FileType::Directory,
-            ResourceType::Namespace => FileType::Directory,
-            ResourceType::Pod => FileType::Directory,
-            ResourceType::ResourceDefinition => FileType::RegularFile,
+        if self.is_definition_file() {
+            FileType::RegularFile
+        } else {
+            FileType::Directory
         }
     }
 
@@ -179,6 +192,7 @@ impl ResourceFile {
     }
 
     fn execute_command(&self, command: &str) -> std::io::Result<Output> {
+        log::debug!("Executing command: {}", command);
         let command_vec: Vec<&str> = command.split(' ').collect();
         let command_args = &command_vec[1..];
         Command::new(command_vec[0]).args(command_args).output()
