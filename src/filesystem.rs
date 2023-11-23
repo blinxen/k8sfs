@@ -19,9 +19,7 @@ const CONTEXT_INODE: Inode = 1;
 //   * Vec<Inode>: Contains inodes for all children. This depends on the ResourceType.
 //      * Context will contain all namespaces as directories
 //      * Namespace will contain all deployments as directories
-//      * Deployments will contain all pods as directories
 //      * Pods will contain all containers as files
-//      * Container --> Empty as containers don't have children
 //   * Inode: Parent Inode
 pub type File = (ResourceFile, Vec<Inode>);
 
