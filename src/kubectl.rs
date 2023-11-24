@@ -1,6 +1,7 @@
 use serde_json::Value;
 use std::process::Command;
 
+// Retrieve the default context that will be used by kubectl
 pub fn current_context() -> String {
     String::from_utf8(
         Command::new("kubectl")
@@ -15,6 +16,7 @@ pub fn current_context() -> String {
     .to_owned()
 }
 
+// Create a kubernetes namespace in a specific context
 pub fn create_namespace(name: &str, context: &str) -> bool {
     let status = Command::new("kubectl")
         .arg("--context")
@@ -31,10 +33,12 @@ pub fn create_namespace(name: &str, context: &str) -> bool {
     }
 }
 
+// List all namespaces in a specific context
 pub fn namespaces(context: &str) -> Vec<String> {
     retrieve_k8s_resources(vec!["--context", context, "namespace", "-ojson"])
 }
 
+// List all pods in a specific namespace in a specific context
 pub fn pods(context: &str, namespace: &str) -> Vec<String> {
     retrieve_k8s_resources(vec![
         "--context",
@@ -46,6 +50,7 @@ pub fn pods(context: &str, namespace: &str) -> Vec<String> {
     ])
 }
 
+// Helper method to retieve kubernetes resources
 fn retrieve_k8s_resources(kubectl_args: Vec<&str>) -> Vec<String> {
     log::debug!("Trying to retrieve k8s resources with {:?}", kubectl_args);
     // Vec to store the retrieved resource names

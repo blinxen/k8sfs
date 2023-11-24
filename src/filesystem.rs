@@ -23,15 +23,16 @@ const CONTEXT_INODE: Inode = 1;
 //   * Inode: Parent Inode
 pub type File = (ResourceFile, Vec<Inode>);
 
+// Struct that represents the filesystem
 pub struct K8sFS {
     // There is no specific reason why we chose BTreeMap as the inode table data structure
     // It was used in one of the fuser examples
     inode_table: BTreeMap<Inode, File>,
+    // As the name implies, we store the value of the next inode
+    // in this field
     next_inode: Inode,
 }
 
-// TODO: build_namespace_resource and build_pod_resource are very similiar
-// they should be simplified
 impl K8sFS {
     pub fn new() -> Self {
         K8sFS {
@@ -44,6 +45,8 @@ impl K8sFS {
         String::from("KubernetesFS")
     }
 
+    // Build inode table by connecting to the cluster, gathering information on the running
+    // resources (Namespaces, Pods etc.) and creating files from them.
     fn initialize_inode_table(&mut self) {
         log::info!("Initializing inode table");
         // Init FS root
@@ -88,6 +91,11 @@ impl K8sFS {
         }
     }
 
+    // Helper method to add kubernetes resources to the inode table
+    // This method also add a "definition" file to the parent along side the resource file
+    // that is created.
+    // The reasoning here is that every directory should have its definition file, which is
+    // basically just a kubectl describe call for the underlying kubernetes resource, next to it.
     fn build_resource_file(
         &mut self,
         name: &str,
@@ -109,10 +117,14 @@ impl K8sFS {
         inode
     }
 
+    // Helper method to add the inode of a "child" to the children Vec of the parent
     fn add_child_to_inode(&mut self, parent: Inode, child: Inode) {
         self.inode_table.get_mut(&parent).unwrap().1.push(child);
     }
 
+    // Helper method to get the next available inode in the inode table
+    // We only count up and never reuse any inode
+    // That means if a file is delete, the inode number is not reused
     fn calculate_next_inode(&mut self) -> Inode {
         let inode = self.next_inode;
         self.next_inode += 1;
@@ -120,6 +132,7 @@ impl K8sFS {
         inode
     }
 
+    // Search for a file by name in the inode table
     fn get_file_by_name(&self, name: &OsStr, parent_inode: Inode) -> Option<&ResourceFile> {
         log::debug!(
             "Trying to search for {:?} with parent inode {} ",
@@ -153,6 +166,7 @@ impl K8sFS {
         file
     }
 
+    // Search for a file by its inode number in the inode table
     fn get_file_by_inode(&self, inode: Inode) -> Option<&ResourceFile> {
         log::debug!(r#"Trying to search for file with inode "{}""#, inode);
         let mut file = None;
@@ -166,8 +180,8 @@ impl K8sFS {
         file
     }
 
-    // Delete file from inode table
-    // This method also makes sure that the inode is removed from the parent
+    // Delete a file from the inode table
+    // This method also makes sure that the file is from its parent
     fn clean_up_inode(&mut self, inode: Inode, parent: Inode) {
         log::debug!("Deleting file with inode {}", inode);
         self.inode_table.remove(&inode);

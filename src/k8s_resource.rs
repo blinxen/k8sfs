@@ -16,6 +16,10 @@ pub enum ResourceType {
     Pod,
 }
 
+// Helper method to build kubectl commands that will be used at runtime to do various tasks
+// For example:
+// * Describe resource
+// * Delete a resource
 fn build_kubectl_command(
     action: &str,
     resource_type: ResourceType,
@@ -80,6 +84,7 @@ impl ResourceFile {
         }
     }
 
+    // Generate a definition file from the current file
     pub fn create_definition_file(&self, inode: Inode) -> Self {
         ResourceFile {
             inode,
@@ -91,10 +96,12 @@ impl ResourceFile {
         }
     }
 
+    // Return true if the current file is a definition file
     fn is_definition_file(&self) -> bool {
         self.name.ends_with(DEFINITION_FILE_SUFFIX)
     }
 
+    // Return the file type if the current file
     pub fn filetype(&self) -> FileType {
         if self.is_definition_file() {
             FileType::RegularFile
@@ -103,6 +110,7 @@ impl ResourceFile {
         }
     }
 
+    // Return the file attributes of the current file
     pub fn fileattrs(&self) -> FileAttr {
         let permissions = if self.filetype() == FileType::Directory {
             0o555
@@ -138,6 +146,8 @@ impl ResourceFile {
         }
     }
 
+    // Get the description for the current file
+    // This is called when opening a file
     pub fn get_desc(&self) -> Vec<u8> {
         if self.filetype() != FileType::RegularFile {
             log::error!("Fatal ERROR!! You should never reach this!!");
@@ -165,6 +175,7 @@ impl ResourceFile {
         }
     }
 
+    // Calculate the file size of the current file
     pub fn size(&self) -> u64 {
         if self.filetype() == FileType::RegularFile {
             self.get_desc().len() as u64
@@ -173,6 +184,7 @@ impl ResourceFile {
         }
     }
 
+    // Delete the underlying kubernetes resource that this file represents
     pub fn delete(&self) -> bool {
         let result = self.execute_command(&self.delete_cmd);
         if let Ok(result) = result {
@@ -191,6 +203,8 @@ impl ResourceFile {
         }
     }
 
+    // Helper method to execute various internal commands
+    // See delete() and get_desc()
     fn execute_command(&self, command: &str) -> std::io::Result<Output> {
         log::debug!("Executing command: {}", command);
         let command_vec: Vec<&str> = command.split(' ').collect();
